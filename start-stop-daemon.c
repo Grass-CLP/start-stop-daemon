@@ -31,7 +31,7 @@
 #endif /* HAVE_LXC */
 
 #include <stddef.h>
-#define VERSION "1.9.18"
+#define VERSION "1.9.19"
 
 #define MIN_POLL_INTERVAL 20000 /*us*/
 
@@ -75,6 +75,7 @@ static const char *userspec = NULL;
 static char *changeuser = NULL;
 static const char *changegroup = NULL;
 static char *changeroot = NULL;
+static char *changedir = NULL;
 static const char *cmdname = NULL;
 static char *execname = NULL;
 static char *startas = NULL;
@@ -325,6 +326,7 @@ do_help(void)
 "  -o|--oknodo                   exit status 0 (not 1) if nothing done\n"
 "  -q|--quiet                    be more quiet\n"
 "  -v|--verbose                  be more verbose\n"
+"  -w|--workdir                  working directory\n"
 "Retry <schedule> is <item>|/<item>/... where <item> is one of\n"
 " -<signal-num>|[-]<signal-name>  send that signal\n"
 " <timeout>                       wait that many seconds\n"
@@ -505,12 +507,13 @@ parse_options(int argc, char * const *argv)
 		{ "background",   0, NULL, 'b'},
 		{ "make-pidfile", 0, NULL, 'm'},
  		{ "retry",        1, NULL, 'R'},
+ 		{ "work",         1, NULL, 'w'},
 		{ NULL,		0, NULL, 0}
 	};
 	int c;
 
 	for (;;) {
-		c = getopt_long(argc, argv, "HKSVa:n:op:qr:d:s:tu:vx:c:N:bmR:",
+		c = getopt_long(argc, argv, "HKSVa:n:op:qr:d:s:tu:vx:c:N:bmR:w:",
 				longopts, (int *) 0);
 		if (c == -1)
 			break;
@@ -569,6 +572,9 @@ parse_options(int argc, char * const *argv)
 			break;
 		case 'd': /* --namespace /.../<ipcns>|<netns>|<utsns>/name */
 			add_namespace(optarg);
+			break;
+		case 'w': /* work directory */
+			changedir = optarg;
 			break;
 		case 'N':  /* --nice */
 			nicelevel = atoi(optarg);
@@ -986,6 +992,8 @@ main(int argc, char **argv)
 			else
 				printf(")");
 		}
+                if (changedir != NULL)
+			printf(" working directory %s", changedir);
 		if (changeroot != NULL)
 			printf(" in directory %s", changeroot);
 		if (nicelevel)
@@ -1002,6 +1010,10 @@ main(int argc, char **argv)
 		if (chroot(changeroot) < 0)
 			fatal("Unable to chroot() to %s", changeroot);
 	}
+	if (changedir != NULL) {
+		if (chdir(changedir) < 0)
+			fatal("Unable to chdir() to %s", changeroot);
+        }
 	if (changeuser != NULL) {
  		if (setgid(runas_gid))
  			fatal("Unable to set gid to %d", runas_gid);
@@ -1031,7 +1043,10 @@ main(int argc, char **argv)
 		fd = open("/dev/tty", O_RDWR);
 		ioctl(fd, TIOCNOTTY, 0);
 		close(fd);
-		chdir("/");
+		if (changedir != NULL) {
+			if (chdir(changedir) < 0)
+				fatal("Unable to chdir() to %s", changeroot);
+                }
 		umask(022); /* set a default for dumb programs */
 		setpgid(0,0);  /* set the process group */
 		fd=open("/dev/null", O_RDWR); /* stdin */
